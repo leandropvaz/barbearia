@@ -56,3 +56,4 @@ nunit-*.xml
 /.vs/Barbearia.slnx/FileContentIndex/737aae8c-8785-4482-9b4a-b9eedbac376c.vsidx
 /.vs/Barbearia.slnx/FileContentIndex/bcf47e94-87e9-454b-b3d7-19451f5e86c2.vsidx
 /.vs/Barbearia.slnx/FileContentIndex/f4668886-732b-4fc3-8163-4570f5955c28.vsidx
+*.vsidx
