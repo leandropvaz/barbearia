@@ -1,0 +1,213 @@
+@page "/admin/agenda"
+@layout Layout.AdminLayout
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IBarbeiroService BarbeiroService
+@inject IReservaService ReservaService
+
+<PageTitle>Agenda - BarberShop Admin</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">🕐 Agenda</h1>
+        <p class="page-subtitle">Visualize e gira a agenda dos barbeiros</p>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">Barbeiro</label>
+            <select class="form-control" @bind="_barbeiroSelecionado" @bind:after="CarregarReservas">
+                @foreach (var b in _barbeiros)
+                {
+                    <option value="@b.Id">@b.Nome</option>
+                }
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">Data</label>
+            <input type="date" class="form-control"
+                   value="@_data.ToString("yyyy-MM-dd")"
+                   @onchange="e => MudarData(DateTime.Parse(e.Value!.ToString()!))" />
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-secondary" @onclick="DiaAnterior">◀</button>
+            <button class="btn btn-secondary" @onclick="Hoje">Hoje</button>
+            <button class="btn btn-secondary" @onclick="ProximoDia">▶</button>
+        </div>
+    </div>
+</div>
+
+@if (_barbeiro != null)
+{
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        @if (!string.IsNullOrEmpty(_barbeiro.FotoUrl))
+        {
+            <img src="@_barbeiro.FotoUrl" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid var(--gold);" />
+        }
+        <div>
+            <span style="font-weight:600;font-size:16px;">@_barbeiro.Nome</span>
+            <span class="badge @(_barbeiro.AgendaAberta ? "badge-gold" : "badge-danger")" style="margin-left:8px;">
+                @(_barbeiro.AgendaAberta ? "Agenda Aberta" : "Agenda Fechada")
+            </span>
+        </div>
+        <button class="btn btn-sm @(_barbeiro.AgendaAberta ? "btn-danger" : "btn-success")" style="margin-left:auto;"
+                @onclick="ToggleAgenda">
+            @(_barbeiro.AgendaAberta ? "🔒 Fechar Agenda" : "🔓 Abrir Agenda")
+        </button>
+    </div>
+}
+
+@if (_carregando)
+{
+    <div class="loading-overlay"><div class="spinner"></div></div>
+}
+else if (_reservas.Any() || _slots.Any())
+{
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">📅 @_data.ToString("dddd, dd/MM/yyyy")</span>
+            <span style="font-size:13px;color:var(--text-muted);">
+                @_reservas.Count(r => r.Status != StatusReserva.Cancelada) marcações
+            </span>
+        </div>
+
+        @if (!_slots.Any())
+        {
+            <p style="color:var(--text-muted);text-align:center;padding:20px;">Sem horários disponíveis para este dia.</p>
+        }
+        else
+        {
+            <div class="slot-grid" style="margin-top:12px;">
+                @foreach (var slot in _slots)
+                {
+                    var reserva = _reservas.FirstOrDefault(r => r.DataHora == slot && r.Status != StatusReserva.Cancelada);
+                    <div class="time-slot @(reserva != null ? "occupied" : "")"
+                         title="@(reserva != null ? $"{reserva.ClienteNome} - {reserva.Servico?.Nome}" : "Disponível")">
+                        <div style="font-size:14px;font-weight:600;">@slot.ToString("HH:mm")</div>
+                        @if (reserva != null)
+                        {
+                            <div style="font-size:10px;margin-top:2px;">@reserva.ClienteNome</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_reservas.Any())
+    {
+        <div class="card" style="margin-top:20px;">
+            <div class="card-header"><span class="card-title">Lista de Marcações</span></div>
+            @foreach (var r in _reservas.OrderBy(r => r.DataHora))
+            {
+                <div class="reservation-card @(r.Status == StatusReserva.Cancelada ? "cancelled" : "")">
+                    <div class="reservation-time">
+                        <div class="time">@r.DataHora.ToString("HH:mm")</div>
+                    </div>
+                    <div class="reservation-info">
+                        <div class="reservation-client">@r.ClienteNome</div>
+                        <div class="reservation-service">@r.Servico?.Nome · @r.Servico?.DuracaoMinutos min</div>
+                        <div class="reservation-contact">📱 @r.ClienteTelefone · ✉ @r.ClienteEmail</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <span class="badge @GetBadgeClass(r.Status)" style="display:block;margin-bottom:6px;">@GetStatusText(r.Status)</span>
+                        @if (r.Status == StatusReserva.Confirmada)
+                        {
+                            <button class="btn btn-danger btn-sm" @onclick="() => CancelarReserva(r)">Cancelar</button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+else
+{
+    <div style="text-align:center;padding:40px;color:var(--text-muted);">
+        <div style="font-size:48px;margin-bottom:12px;">📅</div>
+        <p>Nenhuma marcação para este dia.</p>
+    </div>
+}
+
+@code {
+    private List<Barbeiro> _barbeiros = new();
+    private Barbeiro? _barbeiro;
+    private List<Reserva> _reservas = new();
+    private List<DateTime> _slots = new();
+    private int _barbeiroSelecionado;
+    private DateTime _data = DateTime.Today;
+    private bool _carregando = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _barbeiros = await BarbeiroService.ListarTodosAsync(true);
+        if (_barbeiros.Any())
+        {
+            _barbeiroSelecionado = _barbeiros.First().Id;
+            await CarregarReservas();
+        }
+        _carregando = false;
+    }
+
+    async Task CarregarReservas()
+    {
+        _carregando = true;
+        _barbeiro = await BarbeiroService.ObterPorIdAsync(_barbeiroSelecionado);
+        _reservas = await ReservaService.ListarPorBarbeiroAsync(_barbeiroSelecionado, _data);
+        _slots = new List<DateTime>();
+
+        if (_barbeiro?.Horarios != null)
+        {
+            var h = _barbeiro.Horarios.FirstOrDefault(x => x.DiaSemana == _data.DayOfWeek && x.Disponivel);
+            if (h != null)
+            {
+                var atual = _data.Add(h.HoraInicio);
+                var fim = _data.Add(h.HoraFim);
+                while (atual < fim)
+                {
+                    _slots.Add(atual);
+                    atual = atual.AddMinutes(h.IntervaloMinutos);
+                }
+            }
+        }
+
+        _carregando = false;
+    }
+
+    async Task MudarData(DateTime d) { _data = d; await CarregarReservas(); }
+    async Task DiaAnterior() { _data = _data.AddDays(-1); await CarregarReservas(); }
+    async Task ProximoDia() { _data = _data.AddDays(1); await CarregarReservas(); }
+    async Task Hoje() { _data = DateTime.Today; await CarregarReservas(); }
+
+    async Task ToggleAgenda()
+    {
+        if (_barbeiro == null) return;
+        await BarbeiroService.AbrirFecharAgendaAsync(_barbeiro.Id, !_barbeiro.AgendaAberta);
+        _barbeiro.AgendaAberta = !_barbeiro.AgendaAberta;
+    }
+
+    async Task CancelarReserva(Reserva r)
+    {
+        await ReservaService.CancelarAsync(r.Id, "Cancelado pelo admin");
+        r.Status = StatusReserva.Cancelada;
+    }
+
+    string GetBadgeClass(StatusReserva s) => s switch
+    {
+        StatusReserva.Confirmada => "badge-success",
+        StatusReserva.Cancelada => "badge-danger",
+        StatusReserva.Concluida => "badge-secondary",
+        _ => "badge-warning"
+    };
+
+    string GetStatusText(StatusReserva s) => s switch
+    {
+        StatusReserva.Confirmada => "Confirmada",
+        StatusReserva.Cancelada => "Cancelada",
+        StatusReserva.Concluida => "Concluída",
+        StatusReserva.Pendente => "Pendente",
+        _ => s.ToString()
+    };
+}

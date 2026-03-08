@@ -1,0 +1,248 @@
+@page "/admin/reservas/nova"
+@layout Layout.AdminLayout
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IBarbeiroService BarbeiroService
+@inject IServicoService ServicoService
+@inject IReservaService ReservaService
+@inject NavigationManager Nav
+
+<PageTitle>Nova Marcação - Admin</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">➕ Nova Marcação</h1>
+        <p class="page-subtitle"><a href="/admin/reservas">← Voltar para lista</a></p>
+    </div>
+</div>
+
+@if (_mensagem != null)
+{
+    <div class="alert @(_sucesso ? "alert-success" : "alert-danger")">@_mensagem</div>
+}
+
+<div class="grid grid-2">
+    <!-- COLUNA ESQUERDA: Serviço, Data/Hora -->
+    <div class="card">
+        <div class="card-header"><span class="card-title">📅 Marcação</span></div>
+
+        <div class="form-group">
+            <label class="form-label">Barbeiro *</label>
+            <select class="form-control" @bind="_barbeiroId" @bind:after="OnBarbeiroChanged">
+                <option value="0">-- Selecione --</option>
+                @foreach (var b in _barbeiros)
+                {
+                    <option value="@b.Id">@b.Nome @(!b.Ativo ? "(Inativo)" : !b.AgendaAberta ? "(Agenda Fechada)" : "")</option>
+                }
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Serviço *</label>
+            <select class="form-control" @bind="_servicoId" @bind:after="OnServicoChanged" disabled="@(_barbeiroId == 0)">
+                <option value="0">-- Selecione --</option>
+                @foreach (var s in _servicos)
+                {
+                    <option value="@s.Id">@s.Nome — €@s.Preco.ToString("F2") (@s.DuracaoMinutos min)</option>
+                }
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Data *</label>
+            <input type="date" class="form-control"
+                   value="@_data.ToString("yyyy-MM-dd")"
+                   @onchange="e => OnDataChanged(DateTime.Parse(e.Value!.ToString()!))"
+                   disabled="@(_servicoId == 0)" />
+        </div>
+
+        @if (_carregandoHorarios)
+        {
+            <div class="loading-overlay" style="padding:20px;"><div class="spinner"></div></div>
+        }
+        else if (_horarios.Any())
+        {
+            <div class="form-group">
+                <label class="form-label">Horário *</label>
+                <div class="slot-grid">
+                    @foreach (var h in _horarios)
+                    {
+                        <div class="time-slot @(_dataHora == h ? "selected" : "")" @onclick="() => _dataHora = h">
+                            @h.ToString("HH:mm")
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (_servicoId > 0)
+        {
+            <p style="color:var(--text-muted);font-size:13px;padding:8px 0;">Nenhum horário disponível nesta data.</p>
+        }
+    </div>
+
+    <!-- COLUNA DIREITA: Dados do cliente -->
+    <div class="card">
+        <div class="card-header"><span class="card-title">👤 Dados do Cliente</span></div>
+
+        <div class="form-group">
+            <label class="form-label">Nome Completo *</label>
+            <input @bind="_clienteNome" class="form-control" placeholder="Nome do cliente" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Telemóvel *</label>
+            <input @bind="_clienteTelefone" class="form-control" placeholder="912 345 678" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">E-mail</label>
+            <input @bind="_clienteEmail" type="email" class="form-control" placeholder="cliente@email.com" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Observações</label>
+            <input @bind="_observacoes" class="form-control" placeholder="Notas adicionais..." />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Recorrência</label>
+            <select class="form-control" @bind="_recorrencia">
+                <option value="0">Sem recorrência</option>
+                <option value="7">Semanal</option>
+                <option value="14">Quinzenal</option>
+                <option value="30">Mensal</option>
+            </select>
+        </div>
+        @if (_recorrencia > 0)
+        {
+            <div class="form-group">
+                <label class="form-label">Número de repetições (além da primeira)</label>
+                <select class="form-control" @bind="_repeticoes">
+                    @for (int i = 1; i <= 12; i++)
+                    {
+                        <option value="@i">@i</option>
+                    }
+                </select>
+            </div>
+        }
+
+        @if (_dataHora != default)
+        {
+            <div style="background:var(--bg-secondary);border-radius:8px;padding:14px;margin-top:8px;">
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;">Resumo</div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="color:var(--text-muted);">Barbeiro</span>
+                    <strong>@_barbeiros.FirstOrDefault(b => b.Id == _barbeiroId)?.Nome</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="color:var(--text-muted);">Serviço</span>
+                    <strong>@_servicos.FirstOrDefault(s => s.Id == _servicoId)?.Nome</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;">
+                    <span style="color:var(--text-muted);">Data/Hora</span>
+                    <strong style="color:var(--gold);">@_dataHora.ToString("dd/MM/yyyy 'às' HH:mm")</strong>
+                </div>
+                @if (_recorrencia > 0)
+                {
+                    <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                        <span style="color:var(--text-muted);">Total</span>
+                        <strong>@(_repeticoes + 1) marcações</strong>
+                    </div>
+                }
+            </div>
+        }
+
+        <button class="btn btn-primary btn-full btn-lg" style="margin-top:20px;"
+                @onclick="Confirmar" disabled="@(_criando || _dataHora == default || _barbeiroId == 0 || _servicoId == 0)">
+            @if (_criando) { <span class="spinner-sm"></span> }
+            else { <span>✓ Criar Marcação</span> }
+        </button>
+    </div>
+</div>
+
+@code {
+    private List<Barbeiro> _barbeiros = new();
+    private List<Servico> _servicos = new();
+    private List<DateTime> _horarios = new();
+
+    private int _barbeiroId, _servicoId;
+    private DateTime _data = DateTime.Today;
+    private DateTime _dataHora;
+    private string _clienteNome = "", _clienteEmail = "", _clienteTelefone = "", _observacoes = "";
+    private bool _carregandoHorarios, _criando;
+    private string? _mensagem;
+    private bool _sucesso;
+    private int _recorrencia = 0;
+    private int _repeticoes = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _barbeiros = await BarbeiroService.ListarTodosAsync();
+    }
+
+    async Task OnBarbeiroChanged()
+    {
+        _servicoId = 0;
+        _dataHora = default;
+        _horarios = new();
+        if (_barbeiroId > 0)
+            _servicos = await ServicoService.ListarPorBarbeiroAsync(_barbeiroId);
+        else
+            _servicos = new();
+    }
+
+    async Task OnServicoChanged()
+    {
+        _dataHora = default;
+        if (_servicoId > 0) await CarregarHorarios();
+    }
+
+    async Task OnDataChanged(DateTime d)
+    {
+        _data = d;
+        _dataHora = default;
+        if (_servicoId > 0) await CarregarHorarios();
+    }
+
+    async Task CarregarHorarios()
+    {
+        _carregandoHorarios = true;
+        _horarios = await ReservaService.ObterHorariosDisponiveisAsync(_barbeiroId, _servicoId, _data);
+        _carregandoHorarios = false;
+    }
+
+    async Task Confirmar()
+    {
+        if (string.IsNullOrWhiteSpace(_clienteNome)) { _mensagem = "O nome é obrigatório."; _sucesso = false; return; }
+        if (string.IsNullOrWhiteSpace(_clienteTelefone)) { _mensagem = "O telemóvel é obrigatório."; _sucesso = false; return; }
+
+        _criando = true;
+        _mensagem = null;
+        try
+        {
+            var datas = new List<DateTime> { _dataHora };
+            if (_recorrencia > 0)
+                for (int i = 1; i <= _repeticoes; i++)
+                    datas.Add(_dataHora.AddDays(_recorrencia * i));
+
+            foreach (var data in datas)
+            {
+                var reserva = new Reserva
+                {
+                    BarbeiroId = _barbeiroId,
+                    ServicoId = _servicoId,
+                    DataHora = data,
+                    ClienteNome = _clienteNome.Trim(),
+                    ClienteEmail = _clienteEmail.Trim().ToLower(),
+                    ClienteTelefone = _clienteTelefone.Trim(),
+                    Observacoes = _observacoes
+                };
+                await ReservaService.CriarAsync(reserva);
+            }
+            Nav.NavigateTo("/admin/reservas");
+        }
+        catch (Exception ex)
+        {
+            _mensagem = ex.Message;
+            _sucesso = false;
+        }
+        finally { _criando = false; }
+    }
+}

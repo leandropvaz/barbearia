@@ -1,0 +1,225 @@
+@page "/admin/reservas"
+@layout Layout.AdminLayout
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IReservaService ReservaService
+@inject IBarbeiroService BarbeiroService
+
+<PageTitle>Reservas - BarberShop Admin</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">📅 Reservas</h1>
+        <p class="page-subtitle">Gira todas as marcações</p>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">Data</label>
+            <input type="date" class="form-control"
+                   value="@_dataFiltro.ToString("yyyy-MM-dd")"
+                   @onchange="e => FiltrarData(DateTime.Parse(e.Value!.ToString()!))" />
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">Barbeiro</label>
+            <select class="form-control" @bind="_barbeiroFiltro">
+                <option value="0">Todos</option>
+                @foreach (var b in _barbeiros)
+                {
+                    <option value="@b.Id">@b.Nome</option>
+                }
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label class="form-label">Status</label>
+            <select class="form-control" @bind="_statusFiltro">
+                <option value="-1">Todos</option>
+                <option value="1">Confirmada</option>
+                <option value="3">Concluída</option>
+                <option value="2">Cancelada</option>
+                <option value="0">Pendente</option>
+            </select>
+        </div>
+        <button class="btn btn-primary" @onclick="Carregar">🔍 Filtrar</button>
+        <button class="btn btn-secondary" @onclick="Hoje">📅 Hoje</button>
+    </div>
+</div>
+
+@if (_mensagem != null)
+{
+    <div class="alert @(_sucesso ? "alert-success" : "alert-danger")">@_mensagem</div>
+}
+
+@if (_carregando)
+{
+    <div class="loading-overlay"><div class="spinner"></div></div>
+}
+else
+{
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Data/Hora</th>
+                    <th>Cliente</th>
+                    <th>Barbeiro</th>
+                    <th>Serviço</th>
+                    <th>Contato</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in ReservasFiltradas)
+                {
+                    <tr>
+                        <td>
+                            <div style="font-weight:600;color:var(--gold);">@r.DataHora.ToString("HH:mm")</div>
+                            <div style="font-size:12px;color:var(--text-muted);">@r.DataHora.ToString("dd/MM/yyyy")</div>
+                        </td>
+                        <td>
+                            <div style="font-weight:600;">@r.ClienteNome</div>
+                            <div style="font-size:11px;color:var(--text-muted);">Cód: @r.CodigoConfirmacao</div>
+                        </td>
+                        <td>@r.Barbeiro?.Nome</td>
+                        <td>
+                            <div>@r.Servico?.Nome</div>
+                            <div style="font-size:12px;color:var(--gold);">€@r.Servico?.Preco.ToString("F2")</div>
+                        </td>
+                        <td>
+                            <div style="font-size:13px;">@r.ClienteTelefone</div>
+                            <div style="font-size:12px;color:var(--text-muted);">@r.ClienteEmail</div>
+                        </td>
+                        <td><span class="badge @GetBadgeClass(r.Status)">@GetStatusText(r.Status)</span></td>
+                        <td>
+                            <div style="display:flex;gap:4px;">
+                                @if (r.Status == StatusReserva.Confirmada)
+                                {
+                                    <button class="btn btn-success btn-sm" @onclick="() => Concluir(r)">✓</button>
+                                    <button class="btn btn-danger btn-sm" @onclick="() => AbrirCancelamento(r)">✕</button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (!ReservasFiltradas.Any())
+    {
+        <p style="text-align:center;color:var(--text-muted);padding:30px;">Nenhuma reserva encontrada.</p>
+    }
+}
+
+@if (_showCancelModal && _reservaCancelar != null)
+{
+    <div class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Cancelar Marcação</h3>
+                <button class="btn btn-secondary btn-sm" @onclick="() => _showCancelModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                <p>Cancelar a marcação de <strong>@_reservaCancelar.ClienteNome</strong> às <strong>@_reservaCancelar.DataHora.ToString("HH:mm")</strong>?</p>
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">Motivo (opcional)</label>
+                    <input @bind="_motivoCancelamento" class="form-control" placeholder="Motivo do cancelamento..." />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => _showCancelModal = false">Voltar</button>
+                <button class="btn btn-danger" @onclick="ConfirmarCancelamento">Cancelar Reserva</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Reserva> _reservas = new();
+    private List<Barbeiro> _barbeiros = new();
+    private DateTime _dataFiltro = DateTime.Today;
+    private int _barbeiroFiltro = 0;
+    private int _statusFiltro = -1;
+    private bool _carregando = true;
+    private string? _mensagem;
+    private bool _sucesso;
+    private bool _showCancelModal;
+    private Reserva? _reservaCancelar;
+    private string _motivoCancelamento = "";
+
+    IEnumerable<Reserva> ReservasFiltradas => _reservas
+        .Where(r => _barbeiroFiltro == 0 || r.BarbeiroId == _barbeiroFiltro)
+        .Where(r => _statusFiltro == -1 || (int)r.Status == _statusFiltro);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _barbeiros = await BarbeiroService.ListarTodosAsync();
+        await Carregar();
+    }
+
+    async Task Carregar()
+    {
+        _carregando = true;
+        _reservas = await ReservaService.ListarTodasAsync(_dataFiltro);
+        _carregando = false;
+    }
+
+    async Task FiltrarData(DateTime data)
+    {
+        _dataFiltro = data;
+        await Carregar();
+    }
+
+    async Task Hoje()
+    {
+        _dataFiltro = DateTime.Today;
+        await Carregar();
+    }
+
+    async Task Concluir(Reserva r)
+    {
+        await ReservaService.ConcluirAsync(r.Id);
+        r.Status = StatusReserva.Concluida;
+        _mensagem = "Reserva concluída.";
+        _sucesso = true;
+    }
+
+    void AbrirCancelamento(Reserva r)
+    {
+        _reservaCancelar = r;
+        _motivoCancelamento = "";
+        _showCancelModal = true;
+    }
+
+    async Task ConfirmarCancelamento()
+    {
+        if (_reservaCancelar == null) return;
+        await ReservaService.CancelarAsync(_reservaCancelar.Id, _motivoCancelamento);
+        _reservaCancelar.Status = StatusReserva.Cancelada;
+        _showCancelModal = false;
+        _mensagem = "Reserva cancelada.";
+        _sucesso = true;
+    }
+
+    string GetBadgeClass(StatusReserva s) => s switch
+    {
+        StatusReserva.Confirmada => "badge-success",
+        StatusReserva.Cancelada => "badge-danger",
+        StatusReserva.Concluida => "badge-secondary",
+        StatusReserva.Pendente => "badge-warning",
+        _ => "badge-secondary"
+    };
+
+    string GetStatusText(StatusReserva s) => s switch
+    {
+        StatusReserva.Confirmada => "Confirmada",
+        StatusReserva.Cancelada => "Cancelada",
+        StatusReserva.Concluida => "Concluída",
+        StatusReserva.Pendente => "Pendente",
+        StatusReserva.NaoCompareceu => "Não Compareceu",
+        _ => s.ToString()
+    };
+}

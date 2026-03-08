@@ -1,0 +1,317 @@
+@page "/admin/barbeiros/novo"
+@page "/admin/barbeiros/{Id:int}"
+@layout Layout.AdminLayout
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IBarbeiroService BarbeiroService
+@inject IServicoService ServicoService
+@inject NavigationManager Nav
+
+<PageTitle>@(_isNovo ? "Novo Barbeiro" : "Editar Barbeiro") - BarberShop Admin</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@(_isNovo ? "➕ Novo Barbeiro" : "✏ Editar Barbeiro")</h1>
+        <p class="page-subtitle"><a href="/admin/barbeiros">← Voltar para lista</a></p>
+    </div>
+</div>
+
+@if (_mensagem != null)
+{
+    <div class="alert @(_sucesso ? "alert-success" : "alert-danger")">@_mensagem</div>
+}
+
+@if (_carregando)
+{
+    <div class="loading-overlay"><div class="spinner"></div></div>
+}
+else
+{
+    <div class="grid grid-2">
+        <div>
+            <div class="card" style="margin-bottom:20px;">
+                <div class="card-header"><span class="card-title">Dados Pessoais</span></div>
+
+                <div class="form-group">
+                    <label class="form-label">Nome *</label>
+                    <input @bind="_nome" class="form-control" placeholder="Nome do barbeiro" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">E-mail *</label>
+                    @if (_isNovo)
+                    {
+                        <input @bind="_email" type="email" class="form-control" placeholder="email@exemplo.com" />
+                    }
+                    else
+                    {
+                        <div class="form-control" style="cursor:default;color:var(--text-primary);opacity:1;">@_email</div>
+                    }
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Telefone</label>
+                    <input @bind="_telefone" class="form-control" placeholder="912 345 678" />
+                </div>
+                @if (_isNovo)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Palavra-passe *</label>
+                        <input @bind="_senha" type="password" class="form-control" placeholder="Mínimo 6 caracteres" />
+                    </div>
+                }
+                else
+                {
+                    <div class="form-group">
+                        <label class="form-label">Nova Palavra-passe (deixe em branco para manter)</label>
+                        <input @bind="_senha" type="password" class="form-control" placeholder="Nova palavra-passe" />
+                    </div>
+                }
+
+                <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                    <label class="form-check">
+                        <input type="checkbox" class="form-check-input" @bind="_ativo" />
+                        Barbeiro Ativo
+                    </label>
+                    <label class="form-check">
+                        <input type="checkbox" class="form-check-input" @bind="_agendaAberta" />
+                        Agenda Aberta
+                    </label>
+                </div>
+            </div>
+
+            @if (!_isNovo)
+            {
+                <div class="card">
+                    <div class="card-header"><span class="card-title">📸 Foto</span></div>
+                    <div style="text-align:center;">
+                        @if (!string.IsNullOrEmpty(_fotoUrl))
+                        {
+                            <img src="@_fotoUrl" style="width:120px;height:120px;border-radius:50%;object-fit:cover;border:3px solid var(--gold);margin-bottom:12px;" />
+                        }
+                        else
+                        {
+                            <div style="width:120px;height:120px;border-radius:50%;background:var(--bg-input);border:3px solid var(--border);margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-size:48px;">👤</div>
+                        }
+                        <InputFile OnChange="UploadFoto" accept="image/*" style="display:none;" id="fotoInput" />
+                        <button class="btn btn-outline btn-sm" onclick="document.getElementById('fotoInput').click()">
+                            📷 Alterar Foto
+                        </button>
+                        @if (!string.IsNullOrEmpty(_fotoUrl))
+                        {
+                            <button class="btn btn-secondary btn-sm" style="margin-left:8px;" @onclick="RemoverFoto">
+                                🗑 Remover
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="card">
+            <div class="card-header"><span class="card-title">✂ Serviços Disponíveis</span></div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Selecione os serviços que este barbeiro realiza:</p>
+            @foreach (var s in _todosServicos)
+            {
+                <label class="form-check" style="margin-bottom:10px;padding:10px;background:var(--bg-secondary);border-radius:6px;align-items:flex-start;">
+                    <input type="checkbox" class="form-check-input" style="margin-top:3px;flex-shrink:0;"
+                           checked="@_servicosSelecionados.Contains(s.Id)"
+                           @onchange="e => ToggleServico(s.Id, (bool)e.Value!)" />
+                    <div>
+                        <div style="font-weight:600;color:var(--text-primary);">@s.Nome</div>
+                        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">@s.DuracaoMinutos min · €@s.Preco.ToString("F2")</div>
+                    </div>
+                </label>
+            }
+        </div>
+    </div>
+
+    @if (!_isNovo)
+    {
+        <div class="card" style="margin-top:20px;">
+            <div class="card-header"><span class="card-title">🕐 Horários de Atendimento</span></div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Dia</th>
+                            <th>Disponível</th>
+                            <th>Início</th>
+                            <th>Fim</th>
+                            <th>Almoço Início</th>
+                            <th>Almoço Fim</th>
+                            <th>Intervalo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var h in _horarios)
+                        {
+                            <tr>
+                                <td style="font-weight:600;">@GetDiaNome(h.DiaSemana)</td>
+                                <td>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" @bind="h.Disponivel" />
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </td>
+                                <td>
+                                    <input type="time" class="form-control" style="width:110px;"
+                                           value="@h.HoraInicio.ToString(@"hh\:mm")"
+                                           @onchange="e => h.HoraInicio = TimeSpan.Parse(e.Value!.ToString()!)" />
+                                </td>
+                                <td>
+                                    <input type="time" class="form-control" style="width:110px;"
+                                           value="@h.HoraFim.ToString(@"hh\:mm")"
+                                           @onchange="e => h.HoraFim = TimeSpan.Parse(e.Value!.ToString()!)" />
+                                </td>
+                                <td>
+                                    <input type="time" class="form-control" style="width:110px;"
+                                           value="@(h.AlmocoInicio?.ToString(@"hh\:mm") ?? "")"
+                                           @onchange="e => h.AlmocoInicio = string.IsNullOrEmpty(e.Value?.ToString()) ? null : TimeSpan.Parse(e.Value.ToString()!)" />
+                                </td>
+                                <td>
+                                    <input type="time" class="form-control" style="width:110px;"
+                                           value="@(h.AlmocoFim?.ToString(@"hh\:mm") ?? "")"
+                                           @onchange="e => h.AlmocoFim = string.IsNullOrEmpty(e.Value?.ToString()) ? null : TimeSpan.Parse(e.Value.ToString()!)" />
+                                </td>
+                                <td>
+                                    <select class="form-control" style="width:100px;" @bind="h.IntervaloMinutos">
+                                        <option value="15">15 min</option>
+                                        <option value="30">30 min</option>
+                                        <option value="45">45 min</option>
+                                        <option value="60">1h</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <div style="display:flex;gap:12px;margin-top:20px;">
+        <button class="btn btn-primary btn-lg" @onclick="Salvar" disabled="@_salvando">
+            @if (_salvando) { <span class="spinner-sm"></span> }
+            else { <span>💾 Salvar</span> }
+        </button>
+        <a href="/admin/barbeiros" class="btn btn-secondary btn-lg">Cancelar</a>
+    </div>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private bool _isNovo => !Id.HasValue;
+    private bool _carregando = true, _salvando = false;
+    private string? _mensagem;
+    private bool _sucesso;
+
+    private string _nome = "", _email = "", _telefone = "", _senha = "", _fotoUrl = "";
+    private bool _ativo = true, _agendaAberta = true;
+    private List<Servico> _todosServicos = new();
+    private HashSet<int> _servicosSelecionados = new();
+    private List<HorarioBarbeiro> _horarios = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _todosServicos = await ServicoService.ListarTodosAsync(true);
+
+        if (!_isNovo && Id.HasValue)
+        {
+            var b = await BarbeiroService.ObterPorIdAsync(Id.Value);
+            if (b == null) { Nav.NavigateTo("/admin/barbeiros"); return; }
+
+            _nome = b.Nome;
+            _email = b.Email;
+            _telefone = b.Telefone;
+            _ativo = b.Ativo;
+            _agendaAberta = b.AgendaAberta;
+            _fotoUrl = b.FotoUrl ?? "";
+            _servicosSelecionados = b.BarbeiroServicos.Select(bs => bs.ServicoId).ToHashSet();
+            _horarios = b.Horarios.OrderBy(h => h.DiaSemana).ToList();
+        }
+
+        _carregando = false;
+    }
+
+    async Task Salvar()
+    {
+        if (string.IsNullOrWhiteSpace(_nome) || string.IsNullOrWhiteSpace(_email))
+        {
+            _mensagem = "Nome e e-mail são obrigatórios.";
+            _sucesso = false;
+            return;
+        }
+
+        _salvando = true;
+        try
+        {
+            if (_isNovo)
+            {
+                if (string.IsNullOrWhiteSpace(_senha) || _senha.Length < 6)
+                {
+                    _mensagem = "A palavra-passe deve ter no mínimo 6 caracteres.";
+                    _sucesso = false;
+                    return;
+                }
+                var novo = new Barbeiro { Nome = _nome, Email = _email, Telefone = _telefone, Ativo = _ativo, AgendaAberta = _agendaAberta };
+                var criado = await BarbeiroService.CriarAsync(novo, _senha);
+                await ServicoService.AssociarServicosAsync(criado.Id, _servicosSelecionados.ToList());
+                _mensagem = "Barbeiro criado com sucesso!";
+                _sucesso = true;
+                Nav.NavigateTo($"/admin/barbeiros/{criado.Id}");
+            }
+            else
+            {
+                var atualizado = new Barbeiro { Id = Id!.Value, Nome = _nome, Telefone = _telefone, Ativo = _ativo, AgendaAberta = _agendaAberta };
+                await BarbeiroService.AtualizarAsync(atualizado, string.IsNullOrWhiteSpace(_senha) ? null : _senha);
+                await ServicoService.AssociarServicosAsync(Id.Value, _servicosSelecionados.ToList());
+                if (_horarios.Any()) await BarbeiroService.SalvarHorariosAsync(Id.Value, _horarios);
+                _mensagem = "Barbeiro atualizado com sucesso!";
+                _sucesso = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _mensagem = $"Erro: {ex.Message}";
+            _sucesso = false;
+        }
+        finally { _salvando = false; }
+    }
+
+    async Task UploadFoto(InputFileChangeEventArgs e)
+    {
+        if (Id == null) return;
+        var file = e.File;
+        if (file.Size > 5 * 1024 * 1024) { _mensagem = "Foto muito grande. Máximo 5MB."; _sucesso = false; return; }
+        using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        var url = await BarbeiroService.AtualizarFotoAsync(Id.Value, stream, file.Name);
+        _fotoUrl = url ?? "";
+        _mensagem = "Foto atualizada!";
+        _sucesso = true;
+    }
+
+    async Task RemoverFoto()
+    {
+        if (Id == null) return;
+        await BarbeiroService.ExcluirFotoAsync(Id.Value);
+        _fotoUrl = "";
+    }
+
+    void ToggleServico(int id, bool checked_)
+    {
+        if (checked_) _servicosSelecionados.Add(id);
+        else _servicosSelecionados.Remove(id);
+    }
+
+    string GetDiaNome(DayOfWeek d) => d switch
+    {
+        DayOfWeek.Sunday => "Domingo",
+        DayOfWeek.Monday => "Segunda",
+        DayOfWeek.Tuesday => "Terça",
+        DayOfWeek.Wednesday => "Quarta",
+        DayOfWeek.Thursday => "Quinta",
+        DayOfWeek.Friday => "Sexta",
+        DayOfWeek.Saturday => "Sábado",
+        _ => d.ToString()
+    };
+}

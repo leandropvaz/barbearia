@@ -1,0 +1,284 @@
+@page "/minha-reserva"
+@page "/minha-reserva/{Codigo}"
+@layout Layout.MainLayout
+@rendermode InteractiveServer
+@inject IReservaService ReservaService
+@inject IBarbeiroService BarbeiroService
+@inject IServicoService ServicoService
+
+<PageTitle>Minha Reserva - BarberShop</PageTitle>
+
+<div style="background:var(--bg-primary);min-height:100vh;">
+    <div class="booking-container">
+        <div class="booking-header">
+            <img src="/images/logo.jpeg" alt="Logo"
+                 style="width:180px;height:180px;object-fit:contain;display:block;margin:0 auto 8px;mix-blend-mode:screen;" />
+            <span class="logo-sub">Gerir Marcação</span>
+        </div>
+
+        @if (_mensagem != null)
+        {
+            <div class="alert @(_sucesso ? "alert-success" : "alert-danger")">@_mensagem</div>
+        }
+
+        @if (_reserva == null && !_buscando)
+        {
+            <div class="card">
+                <h2 class="booking-section-title">🔍 Pesquisar Marcação</h2>
+                <p style="color:var(--text-muted);margin-bottom:16px;font-size:14px;">
+                    Introduza o código de confirmação que recebeu por e-mail.
+                </p>
+                <div style="display:flex;gap:8px;">
+                    <input @bind="_codigoBusca" @bind:event="oninput"
+                           @onkeypress="HandleKeyPress"
+                           class="form-control" placeholder="Ex: ABC12345"
+                           style="text-transform:uppercase;font-size:18px;letter-spacing:4px;font-weight:700;" />
+                    <button class="btn btn-primary" @onclick="BuscarReserva" style="white-space:nowrap;">
+                        Buscar →
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (_buscando)
+        {
+            <div class="loading-overlay"><div class="spinner"></div><span>A pesquisar marcação...</span></div>
+        }
+
+        @if (_reserva != null)
+        {
+            <div class="card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                    <h2 style="margin:0;">A sua Marcação</h2>
+                    <span class="badge @GetBadgeClass(_reserva.Status)" style="font-size:13px;padding:6px 14px;">
+                        @GetStatusText(_reserva.Status)
+                    </span>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_reserva.Barbeiro?.FotoUrl))
+                {
+                    <div style="text-align:center;margin-bottom:16px;">
+                        <img src="@_reserva.Barbeiro.FotoUrl" style="width:70px;height:70px;border-radius:50%;border:3px solid var(--gold);object-fit:cover;" />
+                    </div>
+                }
+
+                <div style="background:var(--bg-secondary);border-radius:8px;padding:16px;margin-bottom:16px;">
+                    <table style="width:100%;border:none;">
+                        <tbody>
+                            <tr><td style="color:var(--text-muted);padding:6px 0;border:none;">Código</td><td style="font-weight:700;color:var(--gold);letter-spacing:3px;border:none;">@_reserva.CodigoConfirmacao</td></tr>
+                            <tr><td style="color:var(--text-muted);padding:6px 0;border:none;">Cliente</td><td style="font-weight:600;border:none;">@_reserva.ClienteNome</td></tr>
+                            <tr><td style="color:var(--text-muted);padding:6px 0;border:none;">Barbeiro</td><td style="border:none;">@_reserva.Barbeiro?.Nome</td></tr>
+                            <tr><td style="color:var(--text-muted);padding:6px 0;border:none;">Serviço</td><td style="border:none;">@_reserva.Servico?.Nome</td></tr>
+                            <tr><td style="color:var(--text-muted);padding:6px 0;border:none;">Data/Hora</td><td style="font-weight:600;border:none;">@_reserva.DataHora.ToString("dd/MM/yyyy 'às' HH:mm")</td></tr>
+                            <tr><td style="color:var(--text-muted);padding:6px 0;border:none;">Valor</td><td style="color:var(--gold);font-weight:700;border:none;">€@_reserva.Servico?.Preco.ToString("F2")</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (_reserva.Status == StatusReserva.Confirmada)
+                {
+                    @if (!_editando)
+                    {
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                            <button class="btn btn-outline" @onclick="() => _editando = true">✏ Alterar Horário</button>
+                            <button class="btn btn-danger" @onclick="() => _showCancelModal = true">✕ Cancelar Marcação</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="card" style="background:var(--bg-secondary);">
+                            <h3 style="margin-bottom:12px;font-size:16px;">Alterar Horário</h3>
+
+                            <div class="form-group">
+                                <label class="form-label">Nova Data</label>
+                                <div class="date-picker-row">
+                                    @foreach (var d in _diasDisponiveis)
+                                    {
+                                        <div class="date-pill @(_novaData.Date == d.Date ? "selected" : "")"
+                                             @onclick="() => MudarData(d)">
+                                            <span class="day-name">@d.ToString("ddd")</span>
+                                            <span class="day-number">@d.Day</span>
+                                            <span class="month-name">@d.ToString("MMM")</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            @if (_carregandoHorarios)
+                            {
+                                <div class="spinner-sm" style="margin:12px auto;display:block;"></div>
+                            }
+                            else if (_horariosDisponiveis.Any())
+                            {
+                                <div class="form-group">
+                                    <label class="form-label">Novo Horário</label>
+                                    <div class="slot-grid">
+                                        @foreach (var h in _horariosDisponiveis)
+                                        {
+                                            <div class="time-slot @(_novoHorario == h ? "selected" : "")"
+                                                 @onclick="() => _novoHorario = h">
+                                                @h.ToString("HH:mm")
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+
+                            <div style="display:flex;gap:8px;margin-top:12px;">
+                                <button class="btn btn-secondary btn-sm" @onclick="() => _editando = false">Cancelar</button>
+                                @if (_novoHorario != default)
+                                {
+                                    <button class="btn btn-primary btn-sm" @onclick="AlterarReserva" disabled="@_salvando">
+                                        Confirmar Alteração
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        }
+
+        <div style="text-align:center;margin-top:20px;">
+            <a href="/" style="color:var(--text-muted);font-size:14px;">← Fazer nova marcação</a>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CANCELAMENTO -->
+@if (_showCancelModal)
+{
+    <div class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Cancelar Marcação</h3>
+                <button class="btn btn-secondary btn-sm" @onclick="() => _showCancelModal = false">✕</button>
+            </div>
+            <div class="modal-body">
+                <p>Tem a certeza que deseja cancelar a sua marcação do dia <strong>@_reserva?.DataHora.ToString("dd/MM/yyyy 'às' HH:mm")</strong>?</p>
+                <div class="form-group" style="margin-top:12px;">
+                    <label class="form-label">Motivo (opcional)</label>
+                    <input @bind="_motivoCancelamento" class="form-control" placeholder="Descreva o motivo..." />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => _showCancelModal = false">Voltar</button>
+                <button class="btn btn-danger" @onclick="CancelarReserva">Cancelar Marcação</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string? Codigo { get; set; }
+
+    private Reserva? _reserva;
+    private bool _buscando = false;
+    private string _codigoBusca = "";
+    private string? _mensagem;
+    private bool _sucesso;
+    private bool _showCancelModal = false;
+    private string _motivoCancelamento = "";
+    private bool _editando = false, _salvando = false, _carregandoHorarios = false;
+    private List<DateTime> _diasDisponiveis = new();
+    private List<DateTime> _horariosDisponiveis = new();
+    private DateTime _novaData;
+    private DateTime _novoHorario;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _diasDisponiveis = Enumerable.Range(1, 15)
+            .Select(i => DateTime.Today.AddDays(i))
+            .Where(d => d.DayOfWeek != DayOfWeek.Sunday)
+            .ToList();
+
+        if (!string.IsNullOrEmpty(Codigo))
+        {
+            _codigoBusca = Codigo;
+            await BuscarReserva();
+        }
+    }
+
+    async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarReserva();
+    }
+
+    async Task BuscarReserva()
+    {
+        if (string.IsNullOrWhiteSpace(_codigoBusca)) return;
+        _buscando = true;
+        _mensagem = null;
+        _reserva = await ReservaService.ObterPorCodigoAsync(_codigoBusca.Trim().ToUpper());
+        if (_reserva == null)
+        {
+            _mensagem = "Marcação não encontrada. Verifique o código.";
+            _sucesso = false;
+        }
+        _buscando = false;
+    }
+
+    async Task MudarData(DateTime d)
+    {
+        _novaData = d;
+        _novoHorario = default;
+        _carregandoHorarios = true;
+        if (_reserva != null)
+            _horariosDisponiveis = await ReservaService.ObterHorariosDisponiveisAsync(_reserva.BarbeiroId, _reserva.ServicoId, d);
+        _carregandoHorarios = false;
+    }
+
+    async Task AlterarReserva()
+    {
+        if (_reserva == null || _novoHorario == default) return;
+        _salvando = true;
+        try
+        {
+            var atualizado = new Reserva
+            {
+                Id = _reserva.Id,
+                BarbeiroId = _reserva.BarbeiroId,
+                ServicoId = _reserva.ServicoId,
+                DataHora = _novoHorario,
+                Observacoes = _reserva.Observacoes
+            };
+            _reserva = await ReservaService.AtualizarAsync(atualizado);
+            _editando = false;
+            _mensagem = "Marcação alterada com sucesso!";
+            _sucesso = true;
+        }
+        catch (Exception ex)
+        {
+            _mensagem = ex.Message;
+            _sucesso = false;
+        }
+        finally { _salvando = false; }
+    }
+
+    async Task CancelarReserva()
+    {
+        if (_reserva == null) return;
+        await ReservaService.CancelarAsync(_reserva.Id, _motivoCancelamento);
+        _reserva.Status = StatusReserva.Cancelada;
+        _showCancelModal = false;
+        _mensagem = "A sua marcação foi cancelada com sucesso.";
+        _sucesso = true;
+    }
+
+    string GetBadgeClass(StatusReserva s) => s switch
+    {
+        StatusReserva.Confirmada => "badge-success",
+        StatusReserva.Cancelada => "badge-danger",
+        StatusReserva.Concluida => "badge-secondary",
+        _ => "badge-warning"
+    };
+
+    string GetStatusText(StatusReserva s) => s switch
+    {
+        StatusReserva.Confirmada => "✓ Confirmada",
+        StatusReserva.Cancelada => "✕ Cancelada",
+        StatusReserva.Concluida => "✓ Concluída",
+        StatusReserva.Pendente => "⏳ Pendente",
+        _ => s.ToString()
+    };
+}

@@ -1,0 +1,108 @@
+@page "/admin/barbeiros"
+@layout Layout.AdminLayout
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IBarbeiroService BarbeiroService
+@inject NavigationManager Nav
+
+<PageTitle>Barbeiros - BarberShop Admin</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">💈 Barbeiros</h1>
+        <p class="page-subtitle">Gira os barbeiros da barbearia</p>
+    </div>
+    <a href="/admin/barbeiros/novo" class="btn btn-primary">+ Novo Barbeiro</a>
+</div>
+
+@if (_mensagem != null)
+{
+    <div class="alert @(_sucesso ? "alert-success" : "alert-danger")">@_mensagem</div>
+}
+
+@if (_carregando)
+{
+    <div class="loading-overlay"><div class="spinner"></div></div>
+}
+else
+{
+    <div class="grid grid-auto">
+        @foreach (var b in _barbeiros)
+        {
+            <div class="barber-card @(!b.Ativo ? "inactive" : "")">
+                <div class="barber-status">
+                    <span class="status-dot @(b.Ativo && b.AgendaAberta ? "online" : "offline")"></span>
+                </div>
+
+                @if (!string.IsNullOrEmpty(b.FotoUrl))
+                {
+                    <img src="@b.FotoUrl" class="barber-avatar" alt="@b.Nome" />
+                }
+                else
+                {
+                    <div class="barber-avatar-placeholder">👤</div>
+                }
+
+                <div class="barber-name">@b.Nome</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">@b.Email</div>
+                <div style="margin-bottom:12px;">
+                    <span class="badge @(b.Ativo ? "badge-success" : "badge-secondary")">
+                        @(b.Ativo ? "Ativo" : "Inativo")
+                    </span>
+                    <span class="badge @(b.AgendaAberta ? "badge-gold" : "badge-secondary")">
+                        @(b.AgendaAberta ? "Agenda Aberta" : "Fechada")
+                    </span>
+                </div>
+
+                <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;">
+                    <a href="/admin/barbeiros/@b.Id" class="btn btn-outline btn-sm">✏ Editar</a>
+                    <button class="btn btn-sm @(b.Ativo ? "btn-secondary" : "btn-success")"
+                            @onclick="() => ToggleAtivo(b)">
+                        @(b.Ativo ? "⊘ Desativar" : "✓ Ativar")
+                    </button>
+                    <button class="btn btn-sm @(b.AgendaAberta ? "btn-danger" : "btn-success")"
+                            @onclick="() => ToggleAgenda(b)">
+                        @(b.AgendaAberta ? "🔒 Fechar" : "🔓 Abrir")
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Barbeiro> _barbeiros = new();
+    private bool _carregando = true;
+    private string? _mensagem;
+    private bool _sucesso;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Carregar();
+    }
+
+    async Task Carregar()
+    {
+        _carregando = true;
+        _barbeiros = await BarbeiroService.ListarTodosAsync();
+        _carregando = false;
+    }
+
+    async Task ToggleAtivo(Barbeiro b)
+    {
+        await BarbeiroService.AtivarDesativarAsync(b.Id, !b.Ativo);
+        b.Ativo = !b.Ativo;
+        _mensagem = $"{b.Nome} foi {(b.Ativo ? "ativado" : "desativado")}.";
+        _sucesso = true;
+        StateHasChanged();
+    }
+
+    async Task ToggleAgenda(Barbeiro b)
+    {
+        await BarbeiroService.AbrirFecharAgendaAsync(b.Id, !b.AgendaAberta);
+        b.AgendaAberta = !b.AgendaAberta;
+        _mensagem = $"Agenda de {b.Nome} foi {(b.AgendaAberta ? "aberta" : "fechada")}.";
+        _sucesso = true;
+        StateHasChanged();
+    }
+}

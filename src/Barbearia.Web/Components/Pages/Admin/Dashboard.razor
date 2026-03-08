@@ -1,0 +1,153 @@
+@page "/admin"
+@layout Layout.AdminLayout
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize] 
+@inject IReservaService ReservaService
+@inject IBarbeiroService BarbeiroService
+@using BarbeiroEntity = Barbearia.Domain.Entities.Barbeiro
+
+<PageTitle>Dashboard - BarberShop Admin</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-subtitle">Visão geral de hoje - @DateTime.Now.ToString("dddd, dd/MM/yyyy")</p>
+    </div>
+    <a href="/admin/reservas/nova" class="btn btn-primary">+ Nova Reserva</a>
+</div>
+
+@if (_carregando)
+{
+    <div class="loading-overlay"><div class="spinner"></div><span>Carregando...</span></div>
+}
+else
+{
+    <div class="grid grid-4 mb-4">
+        <div class="stat-card">
+            <div class="stat-icon">📅</div>
+            <div>
+                <div class="stat-value">@_reservasHoje</div>
+                <div class="stat-label">Marcações Hoje</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon success">✅</div>
+            <div>
+                <div class="stat-value">@_confirmadas</div>
+                <div class="stat-label">Confirmadas</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon info">💈</div>
+            <div>
+                <div class="stat-value">@_barbeirosAtivos</div>
+                <div class="stat-label">Barbeiros Ativos</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon danger">❌</div>
+            <div>
+                <div class="stat-value">@_canceladas</div>
+                <div class="stat-label">Canceladas Hoje</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-2">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">📅 Marcações de Hoje</span>
+                <a href="/admin/reservas" class="btn btn-outline btn-sm">Ver todas</a>
+            </div>
+            @if (!_reservasDoDia.Any())
+            {
+                <p style="color:var(--text-muted);text-align:center;padding:20px;">Nenhuma marcação para hoje.</p>
+            }
+            else
+            {
+                @foreach (var r in _reservasDoDia.Take(8))
+                {
+                    <div class="reservation-card @(r.Status == StatusReserva.Cancelada ? "cancelled" : "")">
+                        <div class="reservation-time">
+                            <div class="time">@r.DataHora.ToString("HH:mm")</div>
+                        </div>
+                        <div class="reservation-info">
+                            <div class="reservation-client">@r.ClienteNome</div>
+                            <div class="reservation-service">@r.Servico?.Nome · @r.Barbeiro?.Nome</div>
+                            <div class="reservation-contact">@r.ClienteTelefone</div>
+                        </div>
+                        <span class="badge @GetBadgeClass(r.Status)">@GetStatusText(r.Status)</span>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">💈 Barbeiros</span>
+                <a href="/admin/barbeiros" class="btn btn-outline btn-sm">Gerenciar</a>
+            </div>
+            <div class="grid grid-auto">
+                @foreach (var b in _barbeiros)
+                {
+                    <div class="barber-card @(!b.Ativo ? "inactive" : "")">
+                        <div class="barber-status">
+                            <span class="status-dot @(b.Ativo && b.AgendaAberta ? "online" : "offline")"></span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(b.FotoUrl))
+                        {
+                            <img src="@b.FotoUrl" class="barber-avatar" alt="@b.Nome" />
+                        }
+                        else
+                        {
+                            <div class="barber-avatar-placeholder">👤</div>
+                        }
+                        <div class="barber-name">@b.Nome</div>
+                        <div style="font-size:12px;color:var(--text-muted);">
+                            @(b.Ativo ? (b.AgendaAberta ? "Agenda Aberta" : "Agenda Fechada") : "Inativo")
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _carregando = true;
+    private int _reservasHoje, _confirmadas, _canceladas, _barbeirosAtivos;
+    private List<Reserva> _reservasDoDia = new();
+    private List<BarbeiroEntity> _barbeiros = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _reservasDoDia = await ReservaService.ListarTodasAsync(DateTime.Today);
+        _barbeiros = await BarbeiroService.ListarTodosAsync();
+
+        _reservasHoje = _reservasDoDia.Count;
+        _confirmadas = _reservasDoDia.Count(r => r.Status == StatusReserva.Confirmada);
+        _canceladas = _reservasDoDia.Count(r => r.Status == StatusReserva.Cancelada);
+        _barbeirosAtivos = _barbeiros.Count(b => b.Ativo);
+
+        _carregando = false;
+    }
+
+    string GetBadgeClass(StatusReserva s) => s switch
+    {
+        StatusReserva.Confirmada => "badge-success",
+        StatusReserva.Cancelada => "badge-danger",
+        StatusReserva.Concluida => "badge-secondary",
+        StatusReserva.Pendente => "badge-warning",
+        _ => "badge-secondary"
+    };
+
+    string GetStatusText(StatusReserva s) => s switch
+    {
+        StatusReserva.Confirmada => "Confirmada",
+        StatusReserva.Cancelada => "Cancelada",
+        StatusReserva.Concluida => "Concluída",
+        StatusReserva.Pendente => "Pendente",
+        StatusReserva.NaoCompareceu => "Não Compareceu",
+        _ => s.ToString()
+    };
+}

@@ -1,0 +1,193 @@
+@page "/admin/servicos"
+@layout Layout.AdminLayout
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IServicoService ServicoService
+
+<PageTitle>Serviços - BarberShop Admin</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">✂ Serviços</h1>
+        <p class="page-subtitle">Gerencie os serviços da barbearia</p>
+    </div>
+    <button class="btn btn-primary" @onclick="() => AbrirModal(null)">+ Novo Serviço</button>
+</div>
+
+@if (_mensagem != null)
+{
+    <div class="alert @(_sucesso ? "alert-success" : "alert-danger")">@_mensagem</div>
+}
+
+@if (_carregando)
+{
+    <div class="loading-overlay"><div class="spinner"></div></div>
+}
+else
+{
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Serviço</th>
+                    <th>Duração</th>
+                    <th>Preço</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _servicos)
+                {
+                    <tr>
+                        <td>
+                            <div style="font-weight:600;">@s.Nome</div>
+                            <div style="font-size:12px;color:var(--text-muted);">@s.Descricao</div>
+                        </td>
+                        <td>@s.DuracaoMinutos min</td>
+                        <td style="color:var(--gold);font-weight:600;">€@s.Preco.ToString("F2")</td>
+                        <td>
+                            <span class="badge @(s.Ativo ? "badge-success" : "badge-secondary")">
+                                @(s.Ativo ? "Ativo" : "Inativo")
+                            </span>
+                        </td>
+                        <td>
+                            <div style="display:flex;gap:6px;">
+                                <button class="btn btn-outline btn-sm" @onclick="() => AbrirModal(s)">✏ Editar</button>
+                                <button class="btn btn-sm @(s.Ativo ? "btn-secondary" : "btn-success")"
+                                        @onclick="() => ToggleAtivo(s)">
+                                    @(s.Ativo ? "⊘" : "✓")
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_showModal)
+{
+    <div class="modal-overlay" @onclick="FecharModal">
+        <div class="modal-box" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>@(_editando?.Id > 0 ? "Editar Serviço" : "Novo Serviço")</h3>
+                <button class="btn btn-secondary btn-sm" @onclick="FecharModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nome *</label>
+                    <input @bind="_formNome" class="form-control" placeholder="Ex: Corte de Cabelo" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descrição</label>
+                    <input @bind="_formDescricao" class="form-control" placeholder="Descrição breve..." />
+                </div>
+                <div class="grid grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Duração (minutos)</label>
+                        <input @bind="_formDuracao" type="number" class="form-control" min="10" step="5" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Preço (€)</label>
+                        <input @bind="_formPreco" type="number" class="form-control" min="0" step="0.01" />
+                    </div>
+                </div>
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input" @bind="_formAtivo" />
+                    Serviço Ativo
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="FecharModal">Cancelar</button>
+                <button class="btn btn-primary" @onclick="Salvar" disabled="@_salvando">
+                    @if (_salvando) { <span class="spinner-sm"></span> }
+                    else { <span>💾 Salvar</span> }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Servico> _servicos = new();
+    private bool _carregando = true, _showModal = false, _salvando = false;
+    private string? _mensagem;
+    private bool _sucesso;
+    private Servico? _editando;
+    private string _formNome = "", _formDescricao = "";
+    private int _formDuracao = 30;
+    private decimal _formPreco = 0;
+    private bool _formAtivo = true;
+
+    protected override async Task OnInitializedAsync() => await Carregar();
+
+    async Task Carregar()
+    {
+        _carregando = true;
+        _servicos = await ServicoService.ListarTodosAsync();
+        _carregando = false;
+    }
+
+    void AbrirModal(Servico? s)
+    {
+        _editando = s;
+        _formNome = s?.Nome ?? "";
+        _formDescricao = s?.Descricao ?? "";
+        _formDuracao = s?.DuracaoMinutos ?? 30;
+        _formPreco = s?.Preco ?? 0;
+        _formAtivo = s?.Ativo ?? true;
+        _showModal = true;
+    }
+
+    void FecharModal() => _showModal = false;
+
+    async Task Salvar()
+    {
+        if (string.IsNullOrWhiteSpace(_formNome))
+        {
+            _mensagem = "Nome do serviço é obrigatório.";
+            _sucesso = false;
+            return;
+        }
+
+        _salvando = true;
+        try
+        {
+            var servico = new Servico
+            {
+                Id = _editando?.Id ?? 0,
+                Nome = _formNome,
+                Descricao = _formDescricao,
+                DuracaoMinutos = _formDuracao,
+                Preco = _formPreco,
+                Ativo = _formAtivo
+            };
+
+            if (servico.Id == 0)
+                await ServicoService.CriarAsync(servico);
+            else
+                await ServicoService.AtualizarAsync(servico);
+
+            _mensagem = "Serviço salvo com sucesso!";
+            _sucesso = true;
+            _showModal = false;
+            await Carregar();
+        }
+        catch (Exception ex)
+        {
+            _mensagem = $"Erro: {ex.Message}";
+            _sucesso = false;
+        }
+        finally { _salvando = false; }
+    }
+
+    async Task ToggleAtivo(Servico s)
+    {
+        await ServicoService.AtivarDesativarAsync(s.Id, !s.Ativo);
+        s.Ativo = !s.Ativo;
+        _mensagem = $"Serviço {s.Nome} {(s.Ativo ? "ativado" : "desativado")}.";
+        _sucesso = true;
+    }
+}

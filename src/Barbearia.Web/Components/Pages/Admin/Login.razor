@@ -1,0 +1,106 @@
+@page "/admin/login"
+@layout Layout.MainLayout
+@rendermode InteractiveServer
+@inject IBarbeiroService BarbeiroService
+@inject NavigationManager Nav
+@inject Barbearia.Web.Services.LoginTokenService LoginTokenService
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using System.Security.Claims
+
+<PageTitle>Login - BarberShop Admin</PageTitle>
+
+<div class="login-container">
+    <div class="login-box">
+        <div class="login-logo">
+            <img src="/images/logo.jpeg" alt="Logo"
+                 style="width:200px;height:200px;object-fit:contain;display:block;margin:0 auto 8px;mix-blend-mode:screen;"
+                 onerror="this.style.display='none';document.getElementById('loginLogoFallback').style.display='block'" />
+            <div id="loginLogoFallback" style="display:none">
+                <span class="scissors">✂</span>
+                <span class="brand">BARBERSHOP</span>
+            </div>
+            <span class="sub">Painel Administrativo</span>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_erro))
+        {
+            <div class="alert alert-danger">⚠ @_erro</div>
+        }
+
+        <EditForm Model="_model" OnValidSubmit="HandleLogin">
+            <div class="form-group">
+                <label class="form-label">E-mail</label>
+                <input @bind="_model.Email" type="email" class="form-control" placeholder="seu@email.com" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Palavra-passe</label>
+                <input @bind="_model.Senha" type="password" class="form-control" placeholder="••••••••" />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full btn-lg" disabled="@_carregando">
+                @if (_carregando) { <span class="spinner-sm" style="display:inline-block;border-color:rgba(0,0,0,0.3);border-top-color:#000;"></span> }
+                else { <span>Entrar</span> }
+            </button>
+        </EditForm>
+
+        <div style="text-align:center;margin-top:20px;">
+            <a href="/" style="font-size:13px;color:var(--text-secondary);">← Ver site de agendamento</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginModel _model = new();
+    private bool _carregando = false;
+    private string? _erro;
+
+    private async Task HandleLogin()
+    {
+        _carregando = true;
+        _erro = null;
+
+        try
+        {
+            var valido = await BarbeiroService.ValidarSenhaAsync(_model.Email, _model.Senha);
+            if (!valido)
+            {
+                _erro = "E-mail ou palavra-passe incorretos.";
+                return;
+            }
+
+            var barbeiro = await BarbeiroService.ObterPorEmailAsync(_model.Email);
+            if (barbeiro == null || !barbeiro.Ativo)
+            {
+                _erro = "Conta inativa. Contate o administrador.";
+                return;
+            }
+
+            var claims = new List<Claim>
+            {
+                new(ClaimTypes.NameIdentifier, barbeiro.Id.ToString()),
+                new(ClaimTypes.Name, barbeiro.Nome),
+                new(ClaimTypes.Email, barbeiro.Email),
+                new("BarbeiroId", barbeiro.Id.ToString())
+            };
+
+            var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            var principal = new ClaimsPrincipal(identity);
+
+            var token = LoginTokenService.GenerateToken(principal);
+            Nav.NavigateTo($"/admin/login/callback?token={token}", forceLoad: true);
+        }
+        catch
+        {
+            _erro = "Erro ao fazer login. Tente novamente.";
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+
+    class LoginModel
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Senha { get; set; } = string.Empty;
+    }
+}
