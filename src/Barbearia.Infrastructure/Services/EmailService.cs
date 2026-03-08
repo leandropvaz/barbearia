@@ -2,6 +2,7 @@ using Barbearia.Application.Interfaces;
 using Barbearia.Domain.Entities;
 using MailKit.Net.Smtp;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using MimeKit;
 
 namespace Barbearia.Infrastructure.Services;
@@ -9,8 +10,13 @@ namespace Barbearia.Infrastructure.Services;
 public class EmailService : INotificacaoService
 {
     private readonly IConfiguration _config;
+    private readonly ILogger<EmailService> _logger;
 
-    public EmailService(IConfiguration config) => _config = config;
+    public EmailService(IConfiguration config, ILogger<EmailService> logger)
+    {
+        _config = config;
+        _logger = logger;
+    }
 
     public async Task EnviarConfirmacaoEmailAsync(Reserva reserva)
     {
@@ -100,7 +106,11 @@ public class EmailService : INotificacaoService
         var senha = _config["Email:Senha"] ?? string.Empty;
         var nomeRemetente = _config["Email:NomeRemetente"] ?? "BarberShop";
 
-        if (string.IsNullOrEmpty(usuario)) return;
+        if (string.IsNullOrEmpty(usuario))
+        {
+            _logger.LogWarning("E-mail não enviado: Email:Usuario não configurado em appsettings.json.");
+            return;
+        }
 
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(nomeRemetente, usuario));
@@ -108,10 +118,19 @@ public class EmailService : INotificacaoService
         message.Subject = assunto;
         message.Body = new TextPart("html") { Text = htmlBody };
 
-        using var client = new SmtpClient();
-        await client.ConnectAsync(host, port, MailKit.Security.SecureSocketOptions.StartTls);
-        await client.AuthenticateAsync(usuario, senha);
-        await client.SendAsync(message);
-        await client.DisconnectAsync(true);
+        try
+        {
+            using var client = new SmtpClient();
+            await client.ConnectAsync(host, port, MailKit.Security.SecureSocketOptions.StartTls);
+            await client.AuthenticateAsync(usuario, senha);
+            await client.SendAsync(message);
+            await client.DisconnectAsync(true);
+            _logger.LogInformation("E-mail enviado para {Destinatario}: {Assunto}", destinatario, assunto);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falha ao enviar e-mail para {Destinatario}: {Assunto}", destinatario, assunto);
+            throw;
+        }
     }
 }

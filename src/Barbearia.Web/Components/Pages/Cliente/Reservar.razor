@@ -202,7 +202,7 @@
                     <input @bind="_clienteNome" class="form-control" placeholder="O seu nome" />
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Telemóvel / WhatsApp *</label>
+                    <label class="form-label">Telemóvel *</label>
                     <input @bind="_clienteTelefone" class="form-control" placeholder="912 345 678" />
                 </div>
                 <div class="form-group">
@@ -213,6 +213,32 @@
                     <label class="form-label">Observações (opcional)</label>
                     <input @bind="_observacoes" class="form-control" placeholder="Ex: Cabelo médio, trazer referência..." />
                 </div>
+
+                <div class="form-group">
+                    <label class="form-label">Repetir marcação</label>
+                    <select @bind="_recorrencia" class="form-control">
+                        <option value="0">Sem repetição</option>
+                        <option value="7">Semanal (toda semana)</option>
+                        <option value="14">Quinzenal (a cada 2 semanas)</option>
+                        <option value="30">Mensal (todo mês)</option>
+                    </select>
+                </div>
+                @if (_recorrencia > 0)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Número de repetições</label>
+                        <select @bind="_repeticoes" class="form-control">
+                            @for (int i = 1; i <= 12; i++)
+                            {
+                                var total = i + 1;
+                                <option value="@i">@i @(i == 1 ? "vez" : "vezes") (@total marcações no total)</option>
+                            }
+                        </select>
+                    </div>
+                    <div style="background:rgba(201,150,63,0.08);border:1px solid var(--gold-dark);border-radius:6px;padding:10px 14px;font-size:13px;color:var(--text-secondary);">
+                        💡 Serão criadas <strong style="color:var(--gold);">@(_repeticoes + 1) marcações</strong> com intervalo de @(_recorrencia == 7 ? "1 semana" : _recorrencia == 14 ? "2 semanas" : "1 mês") entre cada uma.
+                    </div>
+                }
             </div>
 
             <div style="display:flex;gap:12px;margin-top:16px;">
@@ -236,8 +262,10 @@
         {
             <div class="success-screen">
                 <span class="success-icon">🎉</span>
-                <h2 style="font-size:24px;margin-bottom:8px;">Marcação Confirmada!</h2>
-                <p style="color:var(--text-secondary);">Receberá a confirmação por e-mail e WhatsApp</p>
+                <h2 style="font-size:24px;margin-bottom:8px;">
+                    @(_reservasCriadas.Count > 1 ? $"{_reservasCriadas.Count} Marcações Confirmadas!" : "Marcação Confirmada!")
+                </h2>
+                <p style="color:var(--text-secondary);">Receberá a confirmação por e-mail</p>
 
                 <div class="confirmation-code">
                     <div class="code-label">Código de Confirmação</div>
@@ -245,7 +273,7 @@
                     <div class="code-hint">Guarde este código para alterar ou cancelar a marcação</div>
                 </div>
 
-                <div style="background:var(--bg-secondary);border-radius:10px;padding:20px;text-align:left;margin-bottom:24px;">
+                <div style="background:var(--bg-secondary);border-radius:10px;padding:20px;text-align:left;margin-bottom:@(_reservasCriadas.Count > 1 ? "16px" : "24px");">
                     <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
                         <span style="color:var(--text-muted);">Barbeiro</span>
                         <strong>@_reservaCriada.Barbeiro?.Nome</strong>
@@ -263,6 +291,20 @@
                         <strong style="color:var(--gold);">€@_reservaCriada.Servico?.Preco.ToString("F2")</strong>
                     </div>
                 </div>
+
+                @if (_reservasCriadas.Count > 1)
+                {
+                    <div style="background:var(--bg-secondary);border-radius:10px;padding:16px;margin-bottom:24px;">
+                        <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Todas as marcações criadas:</div>
+                        @foreach (var r in _reservasCriadas)
+                        {
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+                                <span style="color:var(--text-secondary);">@r.DataHora.ToString("dd/MM/yyyy 'às' HH:mm")</span>
+                                <span style="font-family:monospace;color:var(--gold);font-weight:700;font-size:13px;">@r.CodigoConfirmacao</span>
+                            </div>
+                        }
+                    </div>
+                }
 
                 <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
                     <button class="btn btn-outline" @onclick="NovaReserva">+ Nova Marcação</button>
@@ -300,6 +342,8 @@
     private Reserva? _reservaCriada;
 
     private string _clienteNome = "", _clienteEmail = "", _clienteTelefone = "", _observacoes = "";
+    private int _recorrencia = 0, _repeticoes = 1;
+    private List<Reserva> _reservasCriadas = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -352,20 +396,36 @@
         if (string.IsNullOrWhiteSpace(_clienteEmail) || !_clienteEmail.Contains('@')) { _mensagemErro = "E-mail inválido."; return; }
 
         _confirmando = true;
+        _reservasCriadas = new();
         try
         {
-            var reserva = new Reserva
-            {
-                BarbeiroId = _barbeiroId,
-                ServicoId = _servicoId,
-                ClienteNome = _clienteNome.Trim(),
-                ClienteEmail = _clienteEmail.Trim().ToLower(),
-                ClienteTelefone = _clienteTelefone.Trim(),
-                DataHora = _horaEscolhida,
-                Observacoes = _observacoes
-            };
+            var datas = new List<DateTime> { _horaEscolhida };
+            if (_recorrencia > 0)
+                for (int i = 1; i <= _repeticoes; i++)
+                    datas.Add(_horaEscolhida.AddDays(_recorrencia * i));
 
-            _reservaCriada = await ReservaService.CriarAsync(reserva);
+            foreach (var data in datas)
+            {
+                try
+                {
+                    var reserva = new Reserva
+                    {
+                        BarbeiroId = _barbeiroId,
+                        ServicoId = _servicoId,
+                        ClienteNome = _clienteNome.Trim(),
+                        ClienteEmail = _clienteEmail.Trim().ToLower(),
+                        ClienteTelefone = _clienteTelefone.Trim(),
+                        DataHora = data,
+                        Observacoes = _observacoes
+                    };
+                    var criada = await ReservaService.CriarAsync(reserva);
+                    _reservasCriadas.Add(criada);
+                }
+                catch { /* horário pode não estar disponível em datas futuras */ }
+            }
+
+            if (_reservasCriadas.Count == 0) throw new InvalidOperationException("Não foi possível criar nenhuma marcação.");
+            _reservaCriada = _reservasCriadas.First();
             Passo = 5;
         }
         catch (Exception ex)
@@ -383,7 +443,10 @@
         _clienteNome = _clienteEmail = _clienteTelefone = _observacoes = "";
         _horaEscolhida = default;
         _reservaCriada = null;
+        _reservasCriadas = new();
         _mensagemErro = null;
+        _recorrencia = 0;
+        _repeticoes = 1;
     }
 
     string GetStepClass(int step)

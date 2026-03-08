@@ -1,7 +1,101 @@
-﻿@page "/"
+@page "/"
+@layout Layout.MainLayout
+@rendermode InteractiveServer
+@inject IServicoService ServicoService
 
-<PageTitle>Home</PageTitle>
+<PageTitle>BarberShop - Barbearia Profissional</PageTitle>
 
-<h1>Hello, world!</h1>
+<div style="background:var(--bg-primary);min-height:100vh;color:var(--text-primary);">
 
-Welcome to your new app.
+    <!-- HERO -->
+    <div style="background:linear-gradient(180deg,#111 0%,var(--bg-primary) 100%);padding:60px 20px 50px;text-align:center;border-bottom:1px solid var(--border);">
+        <img src="/images/logo.jpeg" alt="BarberShop"
+             style="width:160px;height:160px;object-fit:contain;margin:0 auto 20px;mix-blend-mode:screen;display:block;" />
+        <h1 style="font-size:clamp(28px,6vw,48px);font-weight:800;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">
+            BarberShop
+        </h1>
+        <p style="font-size:clamp(15px,2.5vw,20px);color:var(--text-secondary);margin-bottom:32px;max-width:500px;margin-left:auto;margin-right:auto;">
+            Estilo, precisão e atendimento de excelência. O seu barbeiro de confiança.
+        </p>
+        <a href="/reservar"
+           style="display:inline-block;background:var(--gold);color:#000;font-weight:700;font-size:17px;padding:14px 40px;border-radius:50px;letter-spacing:1px;text-transform:uppercase;transition:background 0.2s;">
+            ✂ Marcar Horário
+        </a>
+    </div>
+
+    <!-- SOBRE NÓS -->
+    <div style="max-width:900px;margin:0 auto;padding:50px 24px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;margin-bottom:60px;">
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;text-align:center;">
+                <div style="font-size:40px;margin-bottom:12px;">✂</div>
+                <h3 style="color:var(--gold);margin-bottom:8px;">Cortes Precisos</h3>
+                <p style="color:var(--text-muted);font-size:14px;line-height:1.7;">Técnicas modernas e clássicas para o visual que você sempre quis.</p>
+            </div>
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;text-align:center;">
+                <div style="font-size:40px;margin-bottom:12px;">🏆</div>
+                <h3 style="color:var(--gold);margin-bottom:8px;">Profissionais Experientes</h3>
+                <p style="color:var(--text-muted);font-size:14px;line-height:1.7;">Barbeiros qualificados com anos de experiência e dedicação ao ofício.</p>
+            </div>
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;text-align:center;">
+                <div style="font-size:40px;margin-bottom:12px;">📅</div>
+                <h3 style="color:var(--gold);margin-bottom:8px;">Marcação Online</h3>
+                <p style="color:var(--text-muted);font-size:14px;line-height:1.7;">Reserve o seu horário em segundos, a qualquer hora e em qualquer lugar.</p>
+            </div>
+        </div>
+
+        <!-- SERVIÇOS -->
+        <div style="text-align:center;margin-bottom:40px;">
+            <h2 style="font-size:28px;color:var(--gold);margin-bottom:8px;text-transform:uppercase;letter-spacing:2px;">Os Nossos Serviços</h2>
+            <div style="width:60px;height:3px;background:var(--gold);margin:0 auto 32px;border-radius:2px;"></div>
+        </div>
+
+        @if (_servicos.Any())
+        {
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:60px;">
+                @foreach (var s in _servicos)
+                {
+                    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;display:flex;flex-direction:column;gap:8px;">
+                        <div style="font-size:22px;font-weight:700;color:var(--text-primary);">@s.Nome</div>
+                        @if (!string.IsNullOrEmpty(s.Descricao))
+                        {
+                            <div style="font-size:13px;color:var(--text-muted);">@s.Descricao</div>
+                        }
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:12px;border-top:1px solid var(--border);">
+                            <span style="color:var(--text-muted);font-size:13px;">⏱ @s.DuracaoMinutos min</span>
+                            <span style="color:var(--gold);font-weight:700;font-size:18px;">€@s.Preco.ToString("F2")</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- CTA FINAL -->
+        <div style="background:linear-gradient(135deg,#1a1500,#2a2000);border:1px solid var(--gold-dark);border-radius:var(--radius);padding:40px;text-align:center;">
+            <h2 style="font-size:24px;color:var(--gold);margin-bottom:10px;">Pronto para um novo visual?</h2>
+            <p style="color:var(--text-secondary);margin-bottom:28px;">Escolha o seu barbeiro, o serviço e o horário ideal para si.</p>
+            <a href="/reservar"
+               style="display:inline-block;background:var(--gold);color:#000;font-weight:700;font-size:16px;padding:14px 36px;border-radius:50px;letter-spacing:1px;text-transform:uppercase;">
+                ✂ Fazer Marcação
+            </a>
+        </div>
+
+        <!-- RODAPÉ -->
+        <div style="text-align:center;padding:32px 0 16px;margin-top:40px;border-top:1px solid var(--border);">
+            <p style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">
+                Já tem uma marcação?
+            </p>
+            <a href="/minha-reserva" style="color:var(--gold);font-size:14px;">
+                🔍 Gerir a minha marcação →
+            </a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Servico> _servicos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _servicos = await ServicoService.ListarTodosAsync(true);
+    }
+}

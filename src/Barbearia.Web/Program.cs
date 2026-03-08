@@ -31,7 +31,7 @@ builder.Services.AddScoped<IBarbeiroService, BarbeiroService>();
 builder.Services.AddScoped<IServicoService, ServicoService>();
 builder.Services.AddScoped<IReservaService, ReservaService>();
 builder.Services.AddScoped<INotificacaoService, EmailService>();
-builder.Services.AddScoped<IArquivoService, AzureBlobService>();
+builder.Services.AddScoped<IArquivoService, LocalFileService>();
 builder.Services.AddScoped<WhatsAppService>();
 builder.Services.AddSingleton<LoginTokenService>();
 
